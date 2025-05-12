@@ -1,0 +1,197 @@
+openapi: 3.1.0
+info:
+  title: DI Signal Orchestrator API
+  version: 1.0.0
+  description: |
+    Ingests device-level telemetry and behavioral events for the DI signal pipeline.
+    The schema version returned in the `X-DI-Schema-Version` response header is
+    independent of the API version: schema changes use semver and the rules in
+    `docs/schema-evolution.md`.
+  license:
+    name: Proprietary
+servers:
+  - url: https://di.example.com
+    description: Production
+  - url: https://di.staging.example.com
+    description: Staging
+  - url: http://localhost:8080
+    description: Local dev
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/signals:
+    post:
+      operationId: ingestSignal
+      summary: Submit a single signal event for buffering and feature extraction.
+      tags: [signals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Signal'
+      responses:
+        '202':
+          description: Accepted (or duplicate — replay-safe).
+          headers:
+            X-DI-Schema-Version:
+              description: Active schema semver applied to this request.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestAck'
+        '400':
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413':
+          description: Payload exceeds 64KiB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Per-tenant rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer, format: int32 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: Upstream buffer (Redis) unavailable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /healthz:
+    get:
+      operationId: healthCheck
+      summary: Liveness probe.
+      security: []
+      tags: [ops]
+      responses:
+        '200':
+          description: Service is alive.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+  /readyz:
+    get:
+      operationId: readyCheck
+      summary: Readiness probe — verifies dependencies (Redis).
+      security: []
+      tags: [ops]
+      responses:
+        '200':
+          description: Ready to serve.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+        '503':
+          description: Dependency degraded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Per-tenant opaque token. Tenant identity is derived from the token; any `tenant_id` field in the body is ignored.
+
+  schemas:
+    Signal:
+      type: object
+      additionalProperties: false
+      required: [event_id, session_id, ts, device]
+      properties:
+        event_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Unique per producer; used for replay-guard dedup with 24h TTL.
+        tenant_id:
+          type: string
+          description: Ignored on ingest (server uses bearer-token tenant). Present for round-trip parity.
+        session_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        ts:
+          type: string
+          format: date-time
+          description: ISO-8601 / RFC 3339. Up to 5 minutes of forward clock skew tolerated.
+        device:
+          $ref: '#/components/schemas/DeviceTelemetry'
+        behavioral:
+          type: array
+          items: { $ref: '#/components/schemas/BehavioralEvent' }
+
+    DeviceTelemetry:
+      type: object
+      additionalProperties: false
+      properties:
+        os: { type: string }
+        os_version: { type: string }
+        ip: { type: string, format: ipv4 }
+        fingerprint: { type: string }
+        battery: { type: number, minimum: 0, maximum: 1 }
+        geo_lat: { type: number, minimum: -90, maximum: 90 }
+        geo_lon: { type: number, minimum: -180, maximum: 180 }
+
+    BehavioralEvent:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [click, type, scroll, focus, blur, submit]
+        dwell_ms: { type: integer, format: int64, minimum: 0 }
+        typing_cps: { type: number, minimum: 0 }
+        mouse_entropy: { type: number, minimum: 0 }
+        target_elem: { type: string, maxLength: 256 }
+
+    IngestAck:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [accepted, duplicate]
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, ready, degraded] }
+        redis: { type: string }
+
+    Error:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code:
+          type: string
+          enum:
+            - invalid_json
+            - invalid_signal
+            - empty_body
+            - payload_too_large
+            - rate_limited
+            - no_tenant
+            - publish_failed
+            - internal_error

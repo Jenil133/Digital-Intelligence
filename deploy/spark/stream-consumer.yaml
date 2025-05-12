@@ -1,0 +1,32 @@
+# SparkApplication for the streaming Redis -> Parquet consumer.
+# Requires the spark-operator (https://github.com/kubeflow/spark-operator).
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: di-features-stream-consumer
+  namespace: di
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: ghcr.io/example/di-features:latest
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: local:///app/di_features/stream_consumer.py
+  sparkVersion: "3.5.1"
+  restartPolicy:
+    type: Always
+  driver:
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+    env:
+      - name: REDIS_URL
+        valueFrom: { secretKeyRef: { name: di-features-secrets, key: REDIS_URL } }
+      - name: OUTPUT_PATH
+        value: s3a://di-features-raw/
+      - name: BAD_RECORDS_PATH
+        value: s3a://di-features-raw/_bad_records/
+  executor:
+    cores: 2
+    instances: 3
+    memory: 2g

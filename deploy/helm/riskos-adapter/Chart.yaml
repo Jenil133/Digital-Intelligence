@@ -1,0 +1,6 @@
+apiVersion: v2
+name: riskos-adapter
+description: Bridges DI feature store rows onto the RiskOS bus.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

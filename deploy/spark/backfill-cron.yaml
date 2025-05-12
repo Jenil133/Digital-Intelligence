@@ -1,0 +1,31 @@
+# Nightly backfill: re-projects raw Parquet through the feature transforms
+# and merges into the feature store. Idempotent (MERGE keyed on tenant/session/window).
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: ScheduledSparkApplication
+metadata:
+  name: di-features-backfill
+  namespace: di
+spec:
+  schedule: "0 2 * * *"          # 02:00 UTC nightly
+  concurrencyPolicy: Forbid
+  successfulRunHistoryLimit: 3
+  failedRunHistoryLimit: 5
+  template:
+    type: Python
+    pythonVersion: "3"
+    mode: cluster
+    image: ghcr.io/example/di-features:latest
+    mainApplicationFile: local:///app/di_features/backfill.py
+    arguments:
+      - "--raw=s3a://di-features-raw/"
+      - "--table=di_features.session_features"
+      - "--format=delta"
+    sparkVersion: "3.5.1"
+    driver:
+      cores: 1
+      memory: 1g
+      serviceAccount: spark
+    executor:
+      cores: 2
+      instances: 4
+      memory: 2g

@@ -1,0 +1,19 @@
+{
+  "event_id": "evt_01HZX7K9P2QF8N3ABCDEF",
+  "tenant_id": "ignored-server-uses-token",
+  "session_id": "sess_8f3c2a1d",
+  "ts": "2026-05-01T12:34:56Z",
+  "device": {
+    "os": "iOS",
+    "os_version": "17.4.1",
+    "ip": "203.0.113.42",
+    "fingerprint": "fp_a3b9e1c0",
+    "battery": 0.78,
+    "geo_lat": 37.7749,
+    "geo_lon": -122.4194
+  },
+  "behavioral": [
+    {"kind": "click", "target_elem": "btn_submit", "dwell_ms": 240},
+    {"kind": "type",  "typing_cps": 4.7, "mouse_entropy": 0.62}
+  ]
+}

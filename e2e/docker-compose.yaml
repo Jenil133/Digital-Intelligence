@@ -1,0 +1,63 @@
+version: "3.9"
+
+# End-to-end harness: synthetic SDK -> collector -> Redis -> Spark consumer ->
+# (file-backed) feature store -> riskos-adapter -> NATS subject.
+# Assertions are run by ./run.sh after services are healthy.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 1s
+      retries: 10
+
+  nats:
+    image: nats:2.10-alpine
+    ports: ["4222:4222"]
+
+  collector:
+    build: ../di-collector
+    environment:
+      LISTEN_ADDR: ":8080"
+      REDIS_URL: "redis://redis:6379/0"
+      TENANT_TOKENS: "tenantA:tokenA"
+    depends_on:
+      redis: { condition: service_healthy }
+    ports: ["8080:8080"]
+
+  features:
+    image: bitnami/spark:3.5
+    user: root
+    working_dir: /app
+    volumes:
+      - ../pyspark:/app
+      - features-out:/data/raw
+    environment:
+      REDIS_URL: "redis://redis:6379/0"
+      OUTPUT_PATH: "file:///data/raw"
+      BAD_RECORDS_PATH: "file:///data/raw/_bad_records"
+      PYTHONPATH: "/app"
+    command: >
+      bash -lc "pip install redis && spark-submit --master 'local[2]'
+      /app/di_features/stream_consumer.py"
+    depends_on:
+      redis: { condition: service_healthy }
+
+  adapter:
+    build: ../riskos-adapter
+    environment:
+      FEATURE_STORE_DSN: "file:///data/features"
+      BUS_URL: "nats://nats:4222"
+      BUS_SUBJECT: "riskos.di.features"
+      POLL_INTERVAL: "1s"
+      CHECKPOINT_PATH: "/data/cp"
+    volumes:
+      - features-out:/data/features
+    depends_on:
+      - nats
+
+volumes:
+  features-out:

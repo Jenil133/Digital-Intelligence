@@ -1,0 +1,6 @@
+apiVersion: v2
+name: di-collector
+description: DI signal ingestion edge.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

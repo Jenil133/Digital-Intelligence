@@ -1,0 +1,23 @@
+image:
+  repository: ghcr.io/example/riskos-adapter
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1  # Single writer; checkpoint is per-pod.
+
+resources:
+  requests: { cpu: "100m", memory: "128Mi" }
+  limits:   { cpu: "500m", memory: "256Mi" }
+
+env:
+  FEATURE_STORE_DSN: "file:///data/features"
+  BUS_URL: "nats://nats.default.svc:4222"
+  BUS_SUBJECT: "riskos.di.features"
+  POLL_INTERVAL: "2s"
+  BATCH_LIMIT: "1000"
+  CHECKPOINT_PATH: "/var/lib/adapter/checkpoint"
+
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 1Gi
