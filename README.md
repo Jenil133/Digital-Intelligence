@@ -1,4 +1,4 @@
-# Digital Intelligence (DI) Signal Orchestrator
+# Digital Intelligence Signal Orchestrator 
 
 Ingests device telemetry and behavioral events, buffers them in Redis Streams,
 and produces fraud-detection features via PySpark for downstream RiskOS
